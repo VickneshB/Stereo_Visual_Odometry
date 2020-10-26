@@ -169,8 +169,12 @@ def findWorldPts(bestMatches_Train, bestMatches_Query, focalLength, baseLength, 
     current3Dpoints = []
     for i in range(len(bestMatches_Train)):
         
-        if ((bestMatches_Query[i][0] - cx) - (bestMatches_Train[i][0] - cx)):
-            calcZ = (focalLength * baseLength) / ((bestMatches_Query[i][0] - cx) - (bestMatches_Train[i][0] - cx)) # Z = f*b/x1-x2
+        d = bestMatches_Query[i][0] - bestMatches_Train[i][0]
+        
+        parallelCheck = bestMatches_Query[i][1] - bestMatches_Train[i][1]
+        
+        if (d > 0 && abs(parallelCheck) < 10):
+            calcZ = (focalLength * baseLength) / d # Z = f*b/x1-x2
             Z = calcZ
             
             #print(bestMatches_Train[i][0], bestMatches_Query[i][0])
