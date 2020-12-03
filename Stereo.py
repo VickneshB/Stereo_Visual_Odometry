@@ -37,18 +37,23 @@ class Stereo:
         
         return kp, des
         
-    def DesMatch(self, img_L, kp_l, des_l, img_R, kp_r, des_r, sort = True):
+    def DesMatch(self, img_L, kp_l, des_l, img_R, kp_r, des_r, mono_points3D = None):
         # create BFMatcher object
         bfObj = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
         # Match descriptors.
         matches = bfObj.match(des_l,des_r)
         
+        pts_L = []
+        pts_R = []
+        desL = []
+        desR = []
         kpL = []
         kpR = []
         
         minDist = 10000
         maxDist = 0
         
+        # Finding the good matches
         for i in range(len(matches)):
             dist = matches[i].distance
             if dist < minDist:
@@ -57,62 +62,113 @@ class Stereo:
                 maxDist = dist
         
         good = []
+        mono = []
         
         for i in range(len(matches)):
             if matches[i].distance <= max(2 * minDist, 30):
-                kpL.append((int(kp_l[matches[i].queryIdx].pt[0]), int(kp_l[matches[i].queryIdx].pt[1])))
-                kpR.append((int(kp_r[matches[i].trainIdx].pt[0]), int(kp_r[matches[i].trainIdx].pt[1])))
+                pts_L.append((int(kp_l[matches[i].queryIdx].pt[0]), int(kp_l[matches[i].queryIdx].pt[1])))
+                pts_R.append((int(kp_r[matches[i].trainIdx].pt[0]), int(kp_r[matches[i].trainIdx].pt[1])))
+                kpL.append(kp_l[matches[i].queryIdx])
+                kpR.append(kp_r[matches[i].trainIdx])
+                desL.append(des_l[matches[i].queryIdx])
+                desR.append(des_r[matches[i].trainIdx])
+                
+                if mono_points3D is not None:
+                    mono.append(mono_points3D[matches[i].queryIdx])
                 good.append(matches[i])
                 
-        kpR = np.array(kpR)
+        pts_L = np.array(pts_L)
+        pts_R = np.array(pts_R)
         kpL = np.array(kpL)
+        kpR = np.array(kpR)
+        desL = np.array(desL)
+        desR = np.array(desR)
+        mono = np.array(mono)
         
-        return kpR, kpL, good
+        return pts_L, pts_R, kpL, kpR, desL, desR, good, mono
 
 
-    def findWorldPts(self, kpR, kpL, focalLength, baseLength, cx, cy):
+    def findWorldPts(self, pts_L, pts_R, focalLength, baseLength, cx, cy):
 
         
         points3D = []
         matchesL = []
         matchesR = []
-        for i in range(len(kpR)):
+        for i in range(len(pts_R)):
             
-            d = kpL[i][0] - kpR[i][0]
-            
-            parallelCheck = kpL[i][1] - kpR[i][1]
+            d = pts_L[i][0] - pts_R[i][0]
             
             
-            if (d > 0 and abs(parallelCheck) < 10):
-                calcZ = (focalLength * baseLength) / d # Z = f*b/x1-x2
-                Z = calcZ
-                matchesL.append(kpL[i])
-                matchesR.append(kpR[i])
-                #print(kpR[i][0], kpL[i][0])
-                
-                X = np.abs(kpL[i][0]-cx) * calcZ / focalLength # X = x1*Z/f
-                Y = np.abs(kpL[i][1]-cy) * calcZ / focalLength # Y = y1*Z/f
-                
-                if (Z > 5):
-                    points3D.append([X, Y, Z])
+            calcZ = (focalLength * baseLength) / d # Z = f*b/x1-x2
+            Z = calcZ
+            matchesL.append(pts_L[i])
+            matchesR.append(pts_R[i])
+            
+            X = np.abs(pts_L[i][0]-cx) * calcZ / focalLength # X = x1*Z/f
+            Y = np.abs(pts_L[i][1]-cy) * calcZ / focalLength # Y = y1*Z/f
+            points3D.append([X, Y, Z])
             
         return np.array(points3D), matchesL, matchesR
+    
+    
+    def computeScale(self, monoPoints, stereoPoints):
+        
+        scales = []
 
-    def poseEstimation(self, previous, current, focalLength, baseLength , cx , cy, prevT_L, prevT_R, K, scale):
+        for i in range(len(monoPoints)):
+            
+            monoMag = ((monoPoints[i][0])**2 + (monoPoints[i][1])**2 + (monoPoints[i][2])**2)**0.5
+            stereoMag = ((stereoPoints[i][0])**2 + (stereoPoints[i][1])**2 + (stereoPoints[i][2])**2)**0.5
+            
+            scales.append(monoMag/stereoMag)
         
-        kpR, kpL, good = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, previous.img_R, previous.kp_r, previous.des_r)
-                
-        previous.points3D, matchesL, matchesR = self.findWorldPts(kpR, kpL, focalLength, baseLength , cx , cy)
+        return np.mean(scales)
         
-        kpR, kpL, good = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, current.img_L, current.kp_l, current.des_l)
+    def poseEstimation(self, previous, current, focalLength, baseLength , cx , cy, prevT_L, P1):
+        
+        pts_L, pts_R, kpL, kpR, desL, desR, good, _ = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, current.img_L, current.kp_l, current.des_l)
+        
+        E, mask = cv2.findEssentialMat(pts_R, pts_L, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        
+        pts_L = pts_L[mask.ravel() == 1]
+        pts_R = pts_R[mask.ravel() == 1]
+        kpL = kpL[mask.ravel() == 1]
+        kpR = kpR[mask.ravel() == 1]
+        desL = desL[mask.ravel() == 1]
+        desR = desR[mask.ravel() == 1]
+        
+        _, R, t, mask = cv2.recoverPose(E, pts_R, pts_L, focal=focalLength, pp = (cx,cy))
+        
+        #mono_points3D, matchesL, matchesR = self.findWorldPts(pts_L, pts_R, focalLength, baseLength , cx , cy)
+        P2 = P1
+        P2[0][3] = t[0]
+        P2[1][3] = t[1]
+        P2[2][3] = t[2]
+        
+        print(P2)
+        mono_points3D = cv2.triangulatePoints(P1, P2, pts_L.T, pts_R.T)
+        print(mono_points3D)
+        mono_points3D = mono_points3D.T
+        print(mono_points3D)
+        
+        pts_L, pts_R, kpL, kpR, desL, desR, good, mono_points3D = self.DesMatch(previous.img_L, kpL, desL, previous.img_R, previous.kp_r, previous.des_r, mono_points3D)
+        
+        E, mask = cv2.findEssentialMat(pts_R, pts_L, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        
+        pts_L = pts_L[mask.ravel() == 1]
+        pts_R = pts_R[mask.ravel() == 1]
+        kpL = kpL[mask.ravel() == 1]
+        kpR = kpR[mask.ravel() == 1]
+        desL = desL[mask.ravel() == 1]
+        desR = desR[mask.ravel() == 1]
+        mono_points3D = mono_points3D[mask.ravel() == 1]
+        
+        previous.points3D, matchesL, matchesR = self.findWorldPts(pts_L, pts_R, focalLength, baseLength , cx , cy)
         
         
-        E, mask = cv2.findEssentialMat(kpR, kpL, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        scale = self.computeScale(mono_points3D, previous.points3D)
         
-        _, R, t, mask = cv2.recoverPose(E, kpR, kpL, focal=focalLength, pp = (cx,cy))
-        
-        kpR, kpL, good = self.DesMatch(previous.img_R, previous.kp_r, previous.des_r, current.img_R, current.kp_r, current.des_r)
-        
+        print("SCALE: ", scale)
         
         R_prev = prevT_L[0:3, 0:3]
         t_prev = np.reshape(prevT_L[0:3, 3], (3,1))
@@ -121,25 +177,6 @@ class Stereo:
         t_curr = t_prev + scale*(R_prev @ t)
         
         
-        currentT_L = np.block([[R_curr, t_curr],[0, 0, 0, 1]])
+        currentT = np.block([[R_curr, t_curr],[0, 0, 0, 1]])
         
-        E, mask = cv2.findEssentialMat(kpR, kpL, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
-        
-        _, R, t, mask = cv2.recoverPose(E, kpR, kpL, focal=focalLength, pp = (cx,cy))
-        
-        
-        kpR, kpL, good = self.DesMatch(current.img_L, current.kp_l, current.des_l, current.img_R, current.kp_r, current.des_r)
-        
-        
-        current.points3D, matchesL, matchesR = self.findWorldPts(kpR, kpL, focalLength, baseLength , cx , cy)
-        
-        R_prev = prevT_R[0:3, 0:3]
-        t_prev = np.reshape(prevT_R[0:3, 3], (3,1))
-        
-        R_curr = R @ R_prev
-        t_curr = t_prev + scale*(R_prev @ t)
-        
-        
-        currentT_R = np.block([[R_curr, t_curr],[0, 0, 0, 1]])
-        
-        return currentT_L, currentT_R, kpL, matchesL, matchesR
+        return currentT, matchesL, matchesR

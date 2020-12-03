@@ -26,8 +26,7 @@ def main():
     maxMatches = 500
     frameNo = 0
     
-    currentT_L = np.eye(4)
-    currentT_R = np.eye(4)
+    currentT = np.eye(4)
     
     odom = np.zeros((1024,1024,3))
     kpR = []
@@ -41,9 +40,11 @@ def main():
     focalLength = float(projectionMatrices[1])
     baseLength =  -1*float(projectionMatrices[17])/float(projectionMatrices[14]) # base = -P1(1,4)/P1(1,1) (in meters)
     
-    K = [[float(projectionMatrices[1]), float(projectionMatrices[2]), float(projectionMatrices[3])],
-                       [float(projectionMatrices[5]), float(projectionMatrices[6]), float(projectionMatrices[7])],
-                       [float(projectionMatrices[9]), float(projectionMatrices[10]), float(projectionMatrices[11])]]
+    P1 = [[float(projectionMatrices[1]), float(projectionMatrices[2]), float(projectionMatrices[3]), 0.00],
+                       [float(projectionMatrices[5]), float(projectionMatrices[6]), float(projectionMatrices[7]), 0.00],
+                       [float(projectionMatrices[9]), float(projectionMatrices[10]), float(projectionMatrices[11]), 0.00]]
+    
+    P1 = np.array(P1)
     
     cx = float(projectionMatrices[3])
     cy = float(projectionMatrices[7])
@@ -68,12 +69,11 @@ def main():
         print("scale = ", scale)
         
         if frameNo:
-            currentT_L, currentT_R, kpL, matchesL, matchesR = current.poseEstimation(previous, current, focalLength, baseLength , cx , cy, currentT_L, currentT_R, K, scale)
+            currentT, matchesL, matchesR = current.poseEstimation(previous, current, focalLength, baseLength , cx , cy, currentT, P1)
             
-        print(currentT_L[:3,3])
+        print(currentT[:3,3])
         
-        odom = cv2.circle(odom, (int(currentT_L[0,3]) + 512, int(currentT_L[2,3]) + 512), 2, (255,0,0), 2)
-        odom = cv2.circle(odom, (int(currentT_R[0,3]) + 512, int(currentT_R[2,3]) + 512), 2, (0,0,255), 2)
+        odom = cv2.circle(odom, (int(currentT[0,3]) + 512, int(currentT[2,3]) + 512), 2, (255,0,0), 2)
         odom = cv2.circle(odom, (int(x) + 512, int(z) + 512), 2, (0,255,0), 2)
         
         
