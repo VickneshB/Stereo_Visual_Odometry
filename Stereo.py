@@ -126,25 +126,25 @@ class Stereo:
         
     def poseEstimation(self, previous, current, focalLength, baseLength , cx , cy, prevT_L, P1, P2):
         
-        pts_L, pts_R, kpL, kpR, desL, desR, good, _ = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, current.img_L, current.kp_l, current.des_l)
+        pts_prev, pts_current, kpL, kpR, desL, desR, good, _ = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, current.img_L, current.kp_l, current.des_l)
         
-        E, mask = cv2.findEssentialMat(pts_R, pts_L, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        E, mask = cv2.findEssentialMat(pts_current, pts_prev, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
         
-        _, R, t, _ = cv2.recoverPose(E, pts_R, pts_L, focal=focalLength, pp = (cx,cy))
+        _, R, t, _ = cv2.recoverPose(E, pts_current, pts_prev, focal=focalLength, pp = (cx,cy))
         
-        pts_L = pts_L[mask.ravel() == 1]
-        pts_R = pts_R[mask.ravel() == 1]
+
+        pts_prev = pts_prev[mask.ravel() == 1]
+        pts_current = pts_current[mask.ravel() == 1]
         kpL = kpL[mask.ravel() == 1]
         kpR = kpR[mask.ravel() == 1]
         desL = desL[mask.ravel() == 1]
         desR = desR[mask.ravel() == 1]
         
-        
-        P3 = P1
+        P3 = P1.copy()
         P3[:3, :3] = P3[:3, :3] @ R
-        P3[0:3,:] = (R @ P3[0:3,:]) + t
+        P3[0:3,:] = t
         
-        mono_points3D = cv2.triangulatePoints(P1, P3, pts_L.T, pts_R.T)
+        mono_points3D = cv2.triangulatePoints(P1, P3, pts_prev.T, pts_current.T)
         mono_points3D = mono_points3D.T
         
         
@@ -159,7 +159,6 @@ class Stereo:
         desL = desL[mask.ravel() == 1]
         desR = desR[mask.ravel() == 1]
         mono_points3D = mono_points3D[mask.ravel() == 1]
-        
         
         previous.points3D = cv2.triangulatePoints(P1, P2, pts_L.T, pts_R.T)
         previous.points3D = previous.points3D.T

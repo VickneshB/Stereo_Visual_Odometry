@@ -1,15 +1,11 @@
 from Stereo import *
         
-def getAbsoluteScale(frameNo, t):
-    ss = t[frameNo-1].strip().split()
-    x_prev = float(ss[3])
-    y_prev = float(ss[7])
-    z_prev = float(ss[11])
+def getGroundTruth(frameNo, t):
     ss = t[frameNo].strip().split()
     x = float(ss[3])
     y = float(ss[7])
     z = float(ss[11])
-    return np.sqrt((x - x_prev)*(x - x_prev) + (y - y_prev)*(y - y_prev) + (z - z_prev)*(z - z_prev)), x, y, z
+    return x, y, z
     
 
 def main():
@@ -52,11 +48,6 @@ def main():
     
     P2 = np.array(P2)
     
-    print(P1)
-    print(P2)
-
-    cv2.waitKey(0)
-
     cx = float(projectionMatrices[3])
     cy = float(projectionMatrices[7])
     t = timeFile.readlines()
@@ -76,8 +67,7 @@ def main():
         imgR = cv2.cvtColor(imgR, cv2.COLOR_BGR2GRAY)
         current.Matching(imgL, imgR)
         
-        scale, x, y, z = getAbsoluteScale(frameNo, t)
-        print("scale = ", scale)
+        x, y, z = getGroundTruth(frameNo, t)
         
         if frameNo:
             currentT = current.poseEstimation(previous, current, focalLength, baseLength , cx , cy, currentT, P1, P2)
