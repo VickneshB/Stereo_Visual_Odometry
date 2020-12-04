@@ -32,7 +32,7 @@ def main():
     kpR = []
     datasetDir = "dataset/sequences/"
     
-    sequence = "01"   
+    sequence = "00"   
     calibFile = open(datasetDir + sequence + "/calib.txt","r")
     timeFile = open("dataset/poses/" + sequence + ".txt","r")
     projectionMatrices = calibFile.read().split()
@@ -40,12 +40,23 @@ def main():
     focalLength = float(projectionMatrices[1])
     baseLength =  -1*float(projectionMatrices[17])/float(projectionMatrices[14]) # base = -P1(1,4)/P1(1,1) (in meters)
     
-    P1 = [[float(projectionMatrices[1]), float(projectionMatrices[2]), float(projectionMatrices[3]), 0.00],
-                       [float(projectionMatrices[5]), float(projectionMatrices[6]), float(projectionMatrices[7]), 0.00],
-                       [float(projectionMatrices[9]), float(projectionMatrices[10]), float(projectionMatrices[11]), 0.00]]
+    P1 = [[float(projectionMatrices[1]), float(projectionMatrices[2]), float(projectionMatrices[3]), float(projectionMatrices[4])],
+                      [float(projectionMatrices[5]), float(projectionMatrices[6]), float(projectionMatrices[7]), float(projectionMatrices[8])],
+                      [float(projectionMatrices[9]), float(projectionMatrices[10]), float(projectionMatrices[11]), float(projectionMatrices[12])]]
     
     P1 = np.array(P1)
     
+    P2 = [[float(projectionMatrices[14]), float(projectionMatrices[15]), float(projectionMatrices[16]), float(projectionMatrices[17])],
+                      [float(projectionMatrices[18]), float(projectionMatrices[19]), float(projectionMatrices[20]), float(projectionMatrices[21])],
+                      [float(projectionMatrices[22]), float(projectionMatrices[23]), float(projectionMatrices[24]), float(projectionMatrices[25])]]
+    
+    P2 = np.array(P2)
+    
+    print(P1)
+    print(P2)
+
+    cv2.waitKey(0)
+
     cx = float(projectionMatrices[3])
     cy = float(projectionMatrices[7])
     t = timeFile.readlines()
@@ -69,24 +80,18 @@ def main():
         print("scale = ", scale)
         
         if frameNo:
-            currentT, matchesL, matchesR = current.poseEstimation(previous, current, focalLength, baseLength , cx , cy, currentT, P1)
+            currentT = current.poseEstimation(previous, current, focalLength, baseLength , cx , cy, currentT, P1, P2)
             
         print(currentT[:3,3])
         
-        odom = cv2.circle(odom, (int(currentT[0,3]) + 512, int(currentT[2,3]) + 512), 2, (255,0,0), 2)
-        odom = cv2.circle(odom, (int(x) + 512, int(z) + 512), 2, (0,255,0), 2)
+        odom = cv2.circle(odom, (int(currentT[0,3]) + 256, int(currentT[2,3]) + 256), 2, (255,0,0), 2)
+        odom = cv2.circle(odom, (int(x) + 256, int(z) + 256), 2, (0,255,0), 2)
         
         
         previous = current
-        
-        
-        if frameNo:
-            for i in range(len(current.points3D)):
-                current.img_L = cv2.circle(current.img_L, tuple(matchesL[i]), 2, (255,0,0), 1)
-                current.img_L = cv2.putText(current.img_L, str(round(current.points3D[i][2], 2)), (matchesL[i][0] + 5, matchesL[i][1] + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 1, cv2.LINE_AA)
             
-            cv2.imshow("Left Image", current.img_L)
-            videoWriter.write(current.img_L)
+        cv2.imshow("Left Image", current.img_L)
+        videoWriter.write(current.img_L)
         
         frameNo = frameNo + 1
         cv2.imshow("Map", odom)

@@ -66,8 +66,8 @@ class Stereo:
         
         for i in range(len(matches)):
             if matches[i].distance <= max(2 * minDist, 30):
-                pts_L.append((int(kp_l[matches[i].queryIdx].pt[0]), int(kp_l[matches[i].queryIdx].pt[1])))
-                pts_R.append((int(kp_r[matches[i].trainIdx].pt[0]), int(kp_r[matches[i].trainIdx].pt[1])))
+                pts_L.append(kp_l[matches[i].queryIdx].pt)
+                pts_R.append(kp_r[matches[i].trainIdx].pt)
                 kpL.append(kp_l[matches[i].queryIdx])
                 kpR.append(kp_r[matches[i].trainIdx])
                 desL.append(des_l[matches[i].queryIdx])
@@ -124,11 +124,13 @@ class Stereo:
         
         return np.mean(scales)
         
-    def poseEstimation(self, previous, current, focalLength, baseLength , cx , cy, prevT_L, P1):
+    def poseEstimation(self, previous, current, focalLength, baseLength , cx , cy, prevT_L, P1, P2):
         
         pts_L, pts_R, kpL, kpR, desL, desR, good, _ = self.DesMatch(previous.img_L, previous.kp_l, previous.des_l, current.img_L, current.kp_l, current.des_l)
         
         E, mask = cv2.findEssentialMat(pts_R, pts_L, focalLength, (cx, cy), method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        
+        _, R, t, _ = cv2.recoverPose(E, pts_R, pts_L, focal=focalLength, pp = (cx,cy))
         
         pts_L = pts_L[mask.ravel() == 1]
         pts_R = pts_R[mask.ravel() == 1]
@@ -137,19 +139,14 @@ class Stereo:
         desL = desL[mask.ravel() == 1]
         desR = desR[mask.ravel() == 1]
         
-        _, R, t, mask = cv2.recoverPose(E, pts_R, pts_L, focal=focalLength, pp = (cx,cy))
         
-        #mono_points3D, matchesL, matchesR = self.findWorldPts(pts_L, pts_R, focalLength, baseLength , cx , cy)
-        P2 = P1
-        P2[0][3] = t[0]
-        P2[1][3] = t[1]
-        P2[2][3] = t[2]
+        P3 = P1
+        P3[:3, :3] = P3[:3, :3] @ R
+        P3[0:3,:] = (R @ P3[0:3,:]) + t
         
-        print(P2)
-        mono_points3D = cv2.triangulatePoints(P1, P2, pts_L.T, pts_R.T)
-        print(mono_points3D)
+        mono_points3D = cv2.triangulatePoints(P1, P3, pts_L.T, pts_R.T)
         mono_points3D = mono_points3D.T
-        print(mono_points3D)
+        
         
         pts_L, pts_R, kpL, kpR, desL, desR, good, mono_points3D = self.DesMatch(previous.img_L, kpL, desL, previous.img_R, previous.kp_r, previous.des_r, mono_points3D)
         
@@ -163,7 +160,9 @@ class Stereo:
         desR = desR[mask.ravel() == 1]
         mono_points3D = mono_points3D[mask.ravel() == 1]
         
-        previous.points3D, matchesL, matchesR = self.findWorldPts(pts_L, pts_R, focalLength, baseLength , cx , cy)
+        
+        previous.points3D = cv2.triangulatePoints(P1, P2, pts_L.T, pts_R.T)
+        previous.points3D = previous.points3D.T
         
         
         scale = self.computeScale(mono_points3D, previous.points3D)
@@ -173,10 +172,10 @@ class Stereo:
         R_prev = prevT_L[0:3, 0:3]
         t_prev = np.reshape(prevT_L[0:3, 3], (3,1))
         
-        R_curr = R @ R_prev
+        R_curr = R_prev @ R
         t_curr = t_prev + scale*(R_prev @ t)
         
         
         currentT = np.block([[R_curr, t_curr],[0, 0, 0, 1]])
         
-        return currentT, matchesL, matchesR
+        return currentT
