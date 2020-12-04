@@ -19,12 +19,11 @@ def main():
         print("Error: can't create output video: %s" % fname)
         sys.exit()
     
-    maxMatches = 500
     frameNo = 0
     
     currentT = np.eye(4)
     
-    odom = np.zeros((1024,1024,3))
+    odom = np.zeros((1980,1980,3))
     kpR = []
     datasetDir = "dataset/sequences/"
     
@@ -51,8 +50,8 @@ def main():
     cx = float(projectionMatrices[3])
     cy = float(projectionMatrices[7])
     t = timeFile.readlines()
-    #print(t)
     
+
     frameNo = 0
     imageNames = os.listdir(datasetDir + sequence + "/image_0")
     imageNames.sort()
@@ -74,6 +73,8 @@ def main():
             
         print(currentT[:3,3])
         
+        odom = cv2.resize(odom, (current.img_L.shape[1], current.img_L.shape[1]))
+
         odom = cv2.circle(odom, (int(currentT[0,3]) + 256, int(currentT[2,3]) + 256), 2, (255,0,0), 2)
         odom = cv2.circle(odom, (int(x) + 256, int(z) + 256), 2, (0,255,0), 2)
         
